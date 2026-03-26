@@ -1,0 +1,10 @@
+yfinance
+pandas
+numpy
+scipy
+matplotlib
+openpyxl
+python-docx
+python-pptx
+plotly
+flask

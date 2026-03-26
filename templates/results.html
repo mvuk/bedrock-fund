@@ -1,0 +1,475 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .explainer {
+    font-size: 13px;
+    color: #5a6a7a;
+    line-height: 1.55;
+    margin: 0 0 12px;
+    padding: 8px 12px;
+    background: #f0f2f6;
+    border-left: 3px solid var(--silver);
+    border-radius: 0 2px 2px 0;
+  }
+</style>
+
+<p style="margin-bottom:14px;">
+  <a href="/" style="font-size:13px;">&#171; Back to Configuration</a>
+</p>
+
+{% if error %}
+<div class="error-box">
+  <strong>Analysis Error</strong>
+  {{ error }}
+</div>
+{% else %}
+
+<!-- Intro -->
+<p class="explainer" style="border-left-color:var(--slate-lt);">
+  This report applies the Markowitz mean-variance optimization framework to your selected assets.
+  Starting from raw daily prices, we computed returns, estimated the joint distribution of all assets
+  (mean vector and covariance matrix), then solved for the set of portfolios that offer the best
+  possible risk-return tradeoffs.
+</p>
+
+<!-- 1. Summary tables -->
+<div class="panel">
+  <div class="panel-head">Frontier Parameters</div>
+  <div class="panel-body">
+    <p class="explainer">
+      These five constants fully characterize the efficient frontier. They are derived from the
+      inverse of the covariance matrix and encode all the information needed to find optimal portfolios.
+      A and C relate to how the assets combine, B measures total available return, D controls the
+      curvature of the frontier, and H measures the maximum reward per unit of risk when a risk-free
+      asset is available.
+    </p>
+    <table class="tbl">
+      <tr><th>Parameter</th><th>Formula</th><th>Computed Value</th></tr>
+      <tr><td>A</td><td>1'&#931;<sup>-1</sup>&#956;</td><td>{{ "%.10f"|format(A) }}</td></tr>
+      <tr><td>B</td><td>&#956;'&#931;<sup>-1</sup>&#956;</td><td>{{ "%.10f"|format(B) }}</td></tr>
+      <tr><td>C</td><td>1'&#931;<sup>-1</sup>1</td><td>{{ "%.4f"|format(C) }}</td></tr>
+      <tr><td>D</td><td>BC - A&#178;</td><td>{{ "%.4f"|format(D) }}</td></tr>
+      <tr><td>H</td><td>(&#956;-&#956;<sub>F</sub>)'&#931;<sup>-1</sup>(&#956;-&#956;<sub>F</sub>)</td><td>{{ "%.10f"|format(H) }}</td></tr>
+      <tr><td>&#956;<sub>F</sub></td><td>avg daily BIL return</td><td>{{ "%.8f"|format(rf) }}</td></tr>
+    </table>
+    <table class="tbl">
+      <tr><th>Verification Check</th><th>Value</th></tr>
+      <tr><td>Max |&#931;&#183;&#931;<sup>-1</sup> - I|</td><td>{{ "%.2e"|format(inv_max_dev) }}</td></tr>
+      <tr><td>Condition number of &#931;</td><td>{{ "%.2f"|format(inv_cond_num) }}</td></tr>
+      <tr><td>Trading days</td><td>{{ n_days }}</td></tr>
+      <tr><td>Return observations</td><td>{{ n_returns }}</td></tr>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">Portfolio Comparison</div>
+  <div class="panel-body">
+    <p class="explainer">
+      Three special portfolios emerge from the optimization. The Minimum Variance Portfolio (MVP) has
+      the lowest possible risk of any combination. The Market Portfolio (tangency) offers the highest
+      reward-to-risk ratio. The Zero-Correlation Portfolio has zero statistical dependence with the
+      Market Portfolio - its return equals the risk-free rate, confirming a key theoretical prediction.
+    </p>
+    <table class="tbl">
+      <tr><th></th><th>MVP</th><th>Market Portfolio</th><th>ZC Portfolio</th></tr>
+      <tr>
+        <td>&#956; (daily)</td>
+        <td>{{ "%.8f"|format(mvp.expected_return) }}</td>
+        <td>{{ "%.8f"|format(market.expected_return) }}</td>
+        <td>{{ "%.8f"|format(zc.expected_return) }}</td>
+      </tr>
+      <tr>
+        <td>&#956; (annualized)</td>
+        <td class="{{ 'pos' if mvp.expected_return > 0 else 'neg' }}">{{ "%.2f%%"|format(mvp.expected_return * 252 * 100) }}</td>
+        <td class="{{ 'pos' if market.expected_return > 0 else 'neg' }}">{{ "%.2f%%"|format(market.expected_return * 252 * 100) }}</td>
+        <td class="{{ 'pos' if zc.expected_return > 0 else 'neg' }}">{{ "%.2f%%"|format(zc.expected_return * 252 * 100) }}</td>
+      </tr>
+      <tr>
+        <td>&#963; (daily)</td>
+        <td>{{ "%.8f"|format(mvp.std_dev) }}</td>
+        <td>{{ "%.8f"|format(market.std_dev) }}</td>
+        <td>{{ "%.8f"|format(zc.std_dev) }}</td>
+      </tr>
+      <tr>
+        <td>&#963; (annualized)</td>
+        <td>{{ "%.2f%%"|format(mvp.std_dev * 15.8745 * 100) }}</td>
+        <td>{{ "%.2f%%"|format(market.std_dev * 15.8745 * 100) }}</td>
+        <td>{{ "%.2f%%"|format(zc.std_dev * 15.8745 * 100) }}</td>
+      </tr>
+      <tr>
+        <td>Sharpe Ratio</td>
+        <td>{{ "%.6f"|format(mvp_sharpe) }}</td>
+        <td>{{ "%.6f"|format(market.sharpe_ratio) }}</td>
+        <td>{{ "%.6f"|format(zc_sharpe) }}</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
+<!-- Top / Bottom assets -->
+<div style="display:flex; gap:14px; margin-bottom:18px;">
+  <div class="panel" style="flex:1; margin-bottom:0;">
+    <div class="panel-head">Top 5 by Annualized Return</div>
+    <div class="panel-body">
+      <table class="tbl">
+        <tr><th>Ticker</th><th>Ann. &#956;</th><th>Ann. &#963;</th></tr>
+        {% for t, am, astd in top5 %}
+        <tr>
+          <td><code>{{ t }}</code></td>
+          <td class="pos">{{ "%.2f%%"|format(am * 100) }}</td>
+          <td>{{ "%.2f%%"|format(astd * 100) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+  <div class="panel" style="flex:1; margin-bottom:0;">
+    <div class="panel-head">Bottom 5 by Annualized Return</div>
+    <div class="panel-body">
+      <table class="tbl">
+        <tr><th>Ticker</th><th>Ann. &#956;</th><th>Ann. &#963;</th></tr>
+        {% for t, am, astd in bottom5 %}
+        <tr>
+          <td><code>{{ t }}</code></td>
+          <td class="{{ 'pos' if am > 0 else 'neg' }}">{{ "%.2f%%"|format(am * 100) }}</td>
+          <td>{{ "%.2f%%"|format(astd * 100) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 2. Tabbed sheet preview -->
+{% if sheets %}
+{% set tab_explainers = {
+  1: "Raw adjusted closing prices downloaded from Yahoo Finance. These are the starting point - everything else is derived from this data.",
+  2: "Each day's percentage change: (today's price - yesterday's price) / yesterday's price. Returns are the random variables that the optimization works with.",
+  3: "The mean return of each asset (what we expect on average) and the covariance matrix (how every pair of assets moves together). These two objects are the only inputs the optimizer needs.",
+  4: "The Efficient Portfolio Frontier - every point is a portfolio with the minimum possible risk for its level of expected return. The upper branch is efficient (rational investors choose from here), the lower branch is dominated.",
+  5: "The risk-free asset (typically a Treasury Bill ETF) has near-zero variance and zero correlation with risky assets. It anchors the Capital Market Line.",
+  6: "The weights, returns, and risk of the three special portfolios. Weights show what fraction of your money goes into each asset. Negative weights mean short selling (borrowing the asset and selling it)."
+} %}
+<div class="panel">
+  <div class="panel-head">Excel Workbook Sheet Preview</div>
+  <div class="panel-body" style="padding:10px 14px;">
+    <ul class="nav nav-tabs" id="sheetTabs" role="tablist">
+      {% for sheet in sheets %}
+      <li class="nav-item" role="presentation">
+        <button class="nav-link{% if loop.index == 6 %} active{% endif %}" id="tab-{{ loop.index }}" data-bs-toggle="tab" data-bs-target="#panel-{{ loop.index }}" type="button" role="tab" aria-selected="{{ 'true' if loop.index == 6 else 'false' }}">{{ sheet.label }}</button>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="tab-content">
+      {% for sheet in sheets %}
+      <div class="tab-pane fade{% if loop.index == 6 %} show active{% endif %}" id="panel-{{ loop.index }}" role="tabpanel">
+        {% if tab_explainers[loop.index] %}
+        <p class="explainer" style="margin-top:10px;">{{ tab_explainers[loop.index] }}</p>
+        {% endif %}
+        {% if sheet.headers %}
+        <div class="sheet-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                {% for h in sheet.headers %}
+                <th>{{ h }}</th>
+                {% endfor %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in sheet.rows %}
+                {% if row is none %}
+                <tr class="sep-row"><td colspan="{{ sheet.headers|length }}">... {{ sheet.total - 15 }} rows omitted ...</td></tr>
+                {% else %}
+                <tr>
+                  {% for cell in row %}
+                  <td>{{ cell }}</td>
+                  {% endfor %}
+                </tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if sheet.truncated %}
+        <p class="sheet-note">Showing first 10 and last 5 of {{ sheet.total }} rows.</p>
+        {% else %}
+        <p class="sheet-note">{{ sheet.total }} rows (complete).</p>
+        {% endif %}
+        {% else %}
+        <p class="sheet-note" style="margin-top:8px;">Sheet data not available.</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- 3. Graph -->
+<div class="panel">
+  <div class="panel-head">Graph 1 - Efficient Portfolio Frontier</div>
+  <div class="panel-body" style="padding:10px;">
+    <p class="explainer">
+      This graph is the visual summary of the entire analysis. The curved line is the Efficient
+      Portfolio Frontier - the boundary of all achievable risk-return combinations. The MVP
+      (leftmost point) is where risk is minimized. The Market Portfolio is where a line from the
+      risk-free rate touches the frontier tangentially - this is the optimal risky portfolio.
+      The straight line (CML) from the risk-free rate through the Market Portfolio represents the
+      best available tradeoff when you can mix risk-free and risky assets. The ZC Portfolio has
+      zero correlation with the Market Portfolio and sits on the lower (inefficient) branch.
+    </p>
+    <img class="graph" src="/download/graph1.png?t={{ cache_bust }}" alt="Efficient Portfolio Frontier">
+  </div>
+</div>
+
+<!-- 4. Weight tables -->
+<p class="explainer">
+  These tables show how each portfolio allocates across your assets. The MVP concentrates in
+  low-volatility defensive assets. The Market Portfolio takes leveraged long/short positions to
+  maximize the Sharpe ratio - this is mathematically optimal but not practically implementable
+  without margin accounts.
+</p>
+
+<div class="panel">
+  <div class="panel-head">Market Portfolio Weights</div>
+  <div class="panel-body">
+    <p style="font-size:12px; color:#777; margin:0 0 8px;">
+      Gross exposure: {{ "%.0f"|format(gross_exposure * 100) }}% &#8226;
+      Long: {{ "%.2f"|format(long_sum) }} &#8226; Short: {{ "%.2f"|format(short_sum) }}
+    </p>
+    <table class="tbl">
+      <tr><th>Ticker</th><th>Name</th><th>Weight</th></tr>
+      {% for t, name, w in market_weights %}
+      <tr>
+        <td><code>{{ t }}</code></td>
+        <td style="text-align:left;">{{ name }}</td>
+        <td class="{{ 'pos' if w > 0 else 'neg' }}">{{ "%+.4f"|format(w) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <div class="panel-head">Minimum Variance Portfolio Weights</div>
+  <div class="panel-body">
+    <table class="tbl">
+      <tr><th>Ticker</th><th>Name</th><th>Weight</th></tr>
+      {% for t, name, w in mvp_weights %}
+      <tr>
+        <td><code>{{ t }}</code></td>
+        <td style="text-align:left;">{{ name }}</td>
+        <td class="{{ 'pos' if w > 0 else 'neg' }}">{{ "%+.4f"|format(w) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<!-- 5. Investment Calculator -->
+<p class="explainer" style="border-left-color:var(--slate-lt);">
+  The Bedrock Fund IS the Market Portfolio - a fixed set of weights across our 20 assets, optimized
+  to maximize the Sharpe ratio. As fund managers, we built this portfolio using the Markowitz
+  framework. As an investor, your only decision is how much of your capital goes into our fund
+  versus a risk-free asset like Treasury bills. This is Tobin's Two-Fund Separation: we handle
+  the asset allocation, you handle the risk level.
+</p>
+
+<div class="panel">
+  <div class="panel-head">Investment Calculator - Two-Fund Separation</div>
+  <div class="panel-body">
+
+    <div style="display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; margin-bottom:14px;">
+      <div>
+        <span class="lbl">Investment Amount ($)</span>
+        <input type="text" id="calcAmount" class="input-corp" style="width:160px;" value="100,000">
+      </div>
+      <div style="flex:1; min-width:280px;">
+        <span class="lbl">Allocation to Bedrock Fund: <span id="calcPctLabel" style="color:var(--accent);">60%</span></span>
+        <div style="display:flex; align-items:center; gap:10px; margin-top:4px;">
+          <span style="font-size:11px; color:#888; text-align:center; min-width:52px;">0%</span>
+          <input type="range" id="calcSlider" min="0" max="150" value="60" style="flex:1; cursor:pointer;">
+          <span style="font-size:11px; color:#888; text-align:center; min-width:52px;">150%</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; margin-top:1px; padding:0 2px;">
+          <span style="font-size:10px; color:#aaa;">100% Treasury Bills</span>
+          <span style="font-size:10px; color:#aaa;">100% Bedrock Fund</span>
+          <span style="font-size:10px; color:#aaa;">Leveraged (borrowing to invest more)</span>
+        </div>
+        <div style="display:flex; gap:6px; margin-top:6px;">
+          <button type="button" class="btn-corp btn-corp-sm btn-corp-outline" onclick="setSlider(30)">Conservative (30%)</button>
+          <button type="button" class="btn-corp btn-corp-sm btn-corp-outline" onclick="setSlider(60)">Balanced (60%)</button>
+          <button type="button" class="btn-corp btn-corp-sm btn-corp-outline" onclick="setSlider(100)">Aggressive (100%)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary stats -->
+    <table class="tbl" style="max-width:500px; margin-bottom:14px;">
+      <tr>
+        <td style="text-align:left;">In Treasury Bills</td>
+        <td id="calcRfDollars" style="font-weight:700;">$40,000</td>
+      </tr>
+      <tr>
+        <td style="text-align:left;">In Bedrock Fund</td>
+        <td id="calcMktDollars" style="font-weight:700;">$60,000</td>
+      </tr>
+      <tr style="border-top:2px solid var(--silver);">
+        <td style="text-align:left;">Expected Annual Return (&#956;)</td>
+        <td id="calcExpReturn" style="font-weight:700;"></td>
+      </tr>
+      <tr>
+        <td style="text-align:left;">Expected Annual Risk (&#963;)</td>
+        <td id="calcExpRisk" style="font-weight:700;"></td>
+      </tr>
+      <tr>
+        <td style="text-align:left;">Expected $ Gain/Loss (1 year)</td>
+        <td id="calcExpDollar" style="font-weight:700;"></td>
+      </tr>
+    </table>
+
+    <!-- Per-asset breakdown -->
+    <span class="lbl" style="margin-bottom:6px;">Per-Asset Dollar Allocation</span>
+    <div style="max-height:350px; overflow-y:auto; border:1px solid var(--silver);">
+      <table class="tbl" id="calcAssetTable" style="margin-bottom:0;">
+        <thead>
+          <tr>
+            <th style="position:sticky;top:0;z-index:2;background:linear-gradient(180deg,var(--slate-lt),var(--slate));color:#fff;border-color:var(--slate-dk);">Ticker</th>
+            <th style="position:sticky;top:0;z-index:2;background:linear-gradient(180deg,var(--slate-lt),var(--slate));color:#fff;border-color:var(--slate-dk);">Name</th>
+            <th style="position:sticky;top:0;z-index:2;background:linear-gradient(180deg,var(--slate-lt),var(--slate));color:#fff;border-color:var(--slate-dk);">Weight</th>
+            <th style="position:sticky;top:0;z-index:2;background:linear-gradient(180deg,var(--slate-lt),var(--slate));color:#fff;border-color:var(--slate-dk);">$ Amount</th>
+          </tr>
+        </thead>
+        <tbody id="calcAssetBody">
+        </tbody>
+      </table>
+    </div>
+    <p style="font-size:11px; color:#888; margin-top:4px;">
+      Negative amounts represent short positions. Above 100% allocation, the risk-free column shows borrowing.
+    </p>
+
+    <p style="font-size:12px; color:#6b5a00; line-height:1.5; margin:12px 0 0; padding:8px 12px; background:#fef9e7; border-left:3px solid #c9a800; border-radius:0 2px 2px 0;">
+      Past performance is not indicative of future results. The expected returns and risk estimates
+      shown above are derived entirely from historical data over the selected time period. Actual
+      future returns will differ - potentially substantially - from these projections. The
+      mean-variance framework assumes returns are normally distributed and that historical
+      correlations will persist, neither of which is guaranteed. This calculator illustrates the
+      theoretical mechanics of Two-Fund Separation, not an investment recommendation.
+    </p>
+
+  </div>
+</div>
+
+<!-- 6. Downloads -->
+<div class="panel">
+  <div class="panel-head">Download Deliverables</div>
+  <div class="panel-body">
+    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+      <a class="btn-corp btn-corp-sm" href="/download/bedrock_fund.xlsx">Excel Workbook (.xlsx)</a>
+      <a class="btn-corp btn-corp-sm" href="/download/bedrock_fund_report.docx">Word Report (.docx)</a>
+      <a class="btn-corp btn-corp-sm btn-corp-outline" href="/download/bedrock_fund_report.md">Markdown Report (.md)</a>
+      <a class="btn-corp btn-corp-sm btn-corp-outline" href="/download/graph1.png">Graph (.png)</a>
+      <a class="btn-corp btn-corp-sm btn-corp-outline" href="/download/csv_all.zip">All CSVs (.zip)</a>
+    </div>
+  </div>
+</div>
+
+<!-- Calculator JS -->
+{% if calc_json %}
+<script>
+(function() {
+  var DATA = {{ calc_json|safe }};
+  var slider = document.getElementById('calcSlider');
+  var amountInput = document.getElementById('calcAmount');
+  var pctLabel = document.getElementById('calcPctLabel');
+  var rfDollars = document.getElementById('calcRfDollars');
+  var mktDollars = document.getElementById('calcMktDollars');
+  var expReturn = document.getElementById('calcExpReturn');
+  var expRisk = document.getElementById('calcExpRisk');
+  var expDollar = document.getElementById('calcExpDollar');
+  var assetBody = document.getElementById('calcAssetBody');
+
+  function parseDollars(s) {
+    return parseFloat(s.replace(/[^0-9.\-]/g, '')) || 0;
+  }
+
+  function fmtDollars(v) {
+    var neg = v < 0;
+    var abs = Math.abs(v);
+    var s = abs.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return (neg ? '-$' : '$') + s;
+  }
+
+  function fmtPct(v) {
+    return (v >= 0 ? '+' : '') + (v * 100).toFixed(2) + '%';
+  }
+
+  function update() {
+    var investment = parseDollars(amountInput.value);
+    var pct = parseInt(slider.value) / 100;
+
+    pctLabel.textContent = slider.value + '%';
+
+    var inRf = investment * (1 - pct);
+    var inMkt = investment * pct;
+    rfDollars.textContent = fmtDollars(inRf);
+    mktDollars.textContent = fmtDollars(inMkt);
+
+    if (inRf < 0) {
+      rfDollars.style.color = 'var(--red)';
+      rfDollars.textContent += ' (borrowing)';
+    } else {
+      rfDollars.style.color = '';
+    }
+
+    var muAnn = (DATA.rf_daily + pct * (DATA.mu_m_daily - DATA.rf_daily)) * 252;
+    var sigmaAnn = pct * DATA.sigma_m_daily * Math.sqrt(252);
+
+    expReturn.textContent = fmtPct(muAnn);
+    expReturn.style.color = muAnn >= 0 ? 'var(--green)' : 'var(--red)';
+
+    expRisk.textContent = (sigmaAnn * 100).toFixed(2) + '%';
+
+    var dollarGain = investment * muAnn;
+    expDollar.textContent = fmtDollars(dollarGain);
+    expDollar.style.color = dollarGain >= 0 ? 'var(--green)' : 'var(--red)';
+
+    // Per-asset table - sort by absolute dollar amount descending
+    var rows = DATA.assets.map(function(a) {
+      var dollars = investment * pct * a.weight;
+      return { ticker: a.ticker, name: a.name, weight: a.weight, dollars: dollars };
+    });
+    rows.sort(function(a, b) { return Math.abs(b.dollars) - Math.abs(a.dollars); });
+
+    var html = '';
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var cls = r.dollars >= 0 ? 'pos' : 'neg';
+      var label = r.dollars < 0 ? ' <span style="font-size:11px;color:var(--red);">(short)</span>' : '';
+      html += '<tr>';
+      html += '<td><code>' + r.ticker + '</code></td>';
+      html += '<td style="text-align:left;">' + r.name + '</td>';
+      html += '<td class="' + cls + '">' + (r.weight >= 0 ? '+' : '') + r.weight.toFixed(4) + '</td>';
+      html += '<td class="' + cls + '" style="font-weight:700;">' + fmtDollars(r.dollars) + label + '</td>';
+      html += '</tr>';
+    }
+    assetBody.innerHTML = html;
+  }
+
+  slider.addEventListener('input', update);
+  amountInput.addEventListener('input', update);
+
+  window.setSlider = function(val) {
+    slider.value = val;
+    update();
+  };
+
+  update();
+})();
+</script>
+{% endif %}
+
+{% endif %}
+{% endblock %}

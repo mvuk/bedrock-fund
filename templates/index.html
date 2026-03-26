@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+  .ticker-well {
+    border: 1px solid var(--silver);
+    border-radius: 2px;
+    padding: 10px 12px;
+    background: #fff;
+    min-height: 50px;
+    box-shadow: inset 1px 1px 3px rgba(0,0,0,0.04);
+  }
+  .badge-row { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tkr-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: linear-gradient(180deg, #5a7a9e 0%, #3b5171 100%);
+    color: #fff;
+    border: 1px solid #2a3c55;
+    border-radius: 2px;
+    padding: 3px 9px;
+    font-family: "Courier New", Courier, monospace;
+    font-size: 13px;
+    font-weight: 700;
+    text-shadow: 0 1px 1px rgba(0,0,0,0.3);
+    cursor: default;
+    transition: transform 0.1s;
+  }
+  .tkr-badge .x-btn {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.6);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0 0 0 2px;
+    cursor: pointer;
+    font-family: Arial, sans-serif;
+  }
+  .tkr-badge .x-btn:hover { color: #ffc0c0; }
+  .tkr-badge.flash {
+    animation: flash-badge 0.3s ease;
+  }
+  @keyframes flash-badge {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); background: linear-gradient(180deg, #d47070 0%, #9e3030 100%); }
+  }
+  .add-row { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  .add-row .input-corp { width: 120px; font-family: "Courier New", Courier, monospace; text-transform: uppercase; }
+  .count-box {
+    margin-left: auto;
+    font-size: 13px;
+    color: var(--text-lt);
+  }
+  .count-num {
+    display: inline-block;
+    background: var(--slate);
+    color: #fff;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 1px 8px;
+    border-radius: 2px;
+    min-width: 24px;
+    text-align: center;
+  }
+  .count-num.warn { background: var(--red); }
+  .count-num.caution { background: var(--gold); }
+  .form-row { display: flex; gap: 14px; margin-bottom: 12px; }
+  .form-row > div { flex: 1; }
+  .divider {
+    border: none;
+    border-top: 1px solid var(--silver-lt);
+    margin: 14px 0;
+  }
+</style>
+
+<div class="panel">
+  <div class="panel-head">Portfolio Configuration</div>
+  <div class="panel-body">
+    <form id="analysisForm" action="/run" method="POST">
+      <input type="hidden" id="tickersHidden" name="tickers" value="{{ default_tickers }}">
+
+      <span class="lbl">Risky Asset Tickers</span>
+      <span class="hint">Click the X to remove a ticker. Type below to add new ones. Accepts 2-30 US-listed symbols.</span>
+
+      <div class="ticker-well" id="tickerContainer"></div>
+
+      <div class="add-row">
+        <input type="text" id="tickerInput" class="input-corp" placeholder="e.g. AAPL" maxlength="5" autocomplete="off">
+        <button type="button" id="addBtn" class="btn-corp btn-corp-sm">Add</button>
+        <button type="button" id="clearBtn" class="btn-corp btn-corp-sm btn-corp-danger">Clear All</button>
+        <button type="button" id="resetBtn" class="btn-corp btn-corp-sm btn-corp-outline">Reset Defaults</button>
+        <span class="count-box">
+          <span id="countNum" class="count-num">20</span> assets selected
+        </span>
+      </div>
+
+      <hr class="divider">
+
+      <div class="form-row">
+        <div>
+          <span class="lbl">Riskless Asset</span>
+          <span class="hint">Short-term Treasury ETF (BIL, SHV, SGOV).</span>
+          <input type="text" id="riskless" name="riskless" class="input-corp" style="width:100%;" value="{{ default_riskless }}">
+        </div>
+        <div>
+          <span class="lbl">Start Date</span>
+          <span class="hint">First trading day of sample period.</span>
+          <input type="date" id="start_date" name="start_date" class="input-corp" style="width:100%;" value="{{ default_start }}">
+        </div>
+        <div>
+          <span class="lbl">End Date</span>
+          <span class="hint">Last trading day of sample period.</span>
+          <input type="date" id="end_date" name="end_date" class="input-corp" style="width:100%;" value="{{ default_end }}">
+        </div>
+      </div>
+
+      <div style="text-align:center; margin-top:16px;">
+        <button type="submit" id="submitBtn" class="btn-corp btn-corp-lg" style="width:100%; max-width:420px;">
+          <span id="submitText">Run Analysis</span>
+          <span id="submitSpinner" style="display:none;">
+            <span class="spinner-border" role="status"></span>
+            Running analysis - please wait...
+          </span>
+        </button>
+      </div>
+
+      <p class="note" style="text-align:center;">Computation takes 30-60 seconds. Price data downloaded live from Yahoo Finance.</p>
+    </form>
+  </div>
+</div>
+
+{% if error %}
+<div class="error-box">
+  <strong>Error</strong>
+  {{ error }}
+</div>
+{% endif %}
+
+<script>
+(function() {
+  const ALL_DEFAULTS = ["NVDA","TSM","EQIX","VRT","LIN","ALB","NEE","CAT","UNP","PLD","DE","WM","UNH","TMO","ISRG","LMT","FCX","NEM","COST","BRK-B"];
+
+  const container = document.getElementById('tickerContainer');
+  const hidden = document.getElementById('tickersHidden');
+  const input = document.getElementById('tickerInput');
+  const countNum = document.getElementById('countNum');
+
+  let tickers = [];
+
+  function sync() {
+    hidden.value = tickers.join(',');
+    const n = tickers.length;
+    countNum.textContent = n;
+    countNum.className = 'count-num' + (n < 2 || n > 30 ? ' warn' : n < 5 ? ' caution' : '');
+  }
+
+  function render() {
+    container.innerHTML = '';
+    const row = document.createElement('div');
+    row.className = 'badge-row';
+    tickers.forEach(t => row.appendChild(makeBadge(t)));
+    container.appendChild(row);
+    sync();
+  }
+
+  function makeBadge(ticker) {
+    const span = document.createElement('span');
+    span.className = 'tkr-badge';
+    span.dataset.ticker = ticker;
+    span.textContent = ticker + ' ';
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'x-btn';
+    x.innerHTML = '&times;';
+    x.addEventListener('click', function(e) {
+      e.stopPropagation();
+      tickers = tickers.filter(t => t !== ticker);
+      render();
+    });
+    span.appendChild(x);
+    return span;
+  }
+
+  function addTicker(raw) {
+    const t = raw.replace(/[^A-Za-z\-]/g, '').toUpperCase().slice(0, 5);
+    if (!t) return;
+    if (tickers.includes(t)) {
+      const el = container.querySelector('[data-ticker="' + t + '"]');
+      if (el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+      return;
+    }
+    if (tickers.length >= 30) return;
+    tickers.push(t);
+    render();
+  }
+
+  document.getElementById('addBtn').addEventListener('click', function() { addTicker(input.value); input.value = ''; input.focus(); });
+  input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); addTicker(input.value); input.value = ''; } });
+  document.getElementById('clearBtn').addEventListener('click', function() { tickers = []; render(); });
+  document.getElementById('resetBtn').addEventListener('click', function() { tickers = [...ALL_DEFAULTS]; render(); });
+
+  document.getElementById('analysisForm').addEventListener('submit', function() {
+    sync();
+    document.getElementById('submitBtn').disabled = true;
+    document.getElementById('submitText').style.display = 'none';
+    document.getElementById('submitSpinner').style.display = 'inline';
+  });
+
+  tickers = [...ALL_DEFAULTS];
+  render();
+})();
+</script>
+{% endblock %}
