@@ -9,6 +9,9 @@ EC310R Financial Economic Theory — Wilfrid Laurier University
 Professor Doron Nisani | Huang & Litzenberger
 """
 
+import matplotlib
+matplotlib.use('Agg')
+
 import os
 import matplotlib.pyplot as plt
 import numpy as np

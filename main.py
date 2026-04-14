@@ -190,7 +190,7 @@ def main():
     print(f"  σ_MVP = {mvp['std_dev']:.8f}")
     print(f"  Weights:")
     for i, t in enumerate(RISKY_TICKERS):
-        print(f"    {t:6s} ({ASSET_NAMES[t]:22s}): {mvp['weights'][i]:+.6f}")
+        print(f"    {t:6s} ({ASSET_NAMES.get(t, t):22s}): {mvp['weights'][i]:+.6f}")
 
     print(f"\nMarket (Tangency) Portfolio:")
     print(f"  μ_M   = {market['expected_return']:.8f}")
@@ -198,7 +198,7 @@ def main():
     print(f"  Sharpe = {market['sharpe_ratio']:.6f}")
     print(f"  Weights:")
     for i, t in enumerate(RISKY_TICKERS):
-        print(f"    {t:6s} ({ASSET_NAMES[t]:22s}): {market['weights'][i]:+.6f}")
+        print(f"    {t:6s} ({ASSET_NAMES.get(t, t):22s}): {market['weights'][i]:+.6f}")
 
     print(f"\nZero-Covariance Portfolio (for Market Portfolio):")
     print(f"  μ_ZC  = {zc['expected_return']:.8f}")
@@ -206,7 +206,7 @@ def main():
     print(f"  Cov(M, ZC) = {cov_mkt_zc:.2e}")
     print(f"  Weights:")
     for i, t in enumerate(RISKY_TICKERS):
-        print(f"    {t:6s} ({ASSET_NAMES[t]:22s}): {zc['weights'][i]:+.6f}")
+        print(f"    {t:6s} ({ASSET_NAMES.get(t, t):22s}): {zc['weights'][i]:+.6f}")
 
     # ── 13. Diagnostics ──────────────────────────────────────────────────
     print(f"\n{'─' * 70}")
@@ -217,7 +217,7 @@ def main():
     for rank, idx in enumerate(top5_idx, 1):
         t = RISKY_TICKERS[idx]
         w = market["weights"][idx]
-        print(f"  {rank}. {t:6s} ({ASSET_NAMES[t]:22s}): {w:+.4f}  (|w| = {abs_weights[idx]:.4f})")
+        print(f"  {rank}. {t:6s} ({ASSET_NAMES.get(t, t):22s}): {w:+.4f}  (|w| = {abs_weights[idx]:.4f})")
     print(f"  Sum of all |w|: {np.sum(abs_weights):.4f}  (leverage ratio)")
 
     print(f"\n{'─' * 70}")
@@ -231,7 +231,7 @@ def main():
     print(f"  {'Ticker':<8s} {'Name':<24s} {'Ann. μ':>8s} {'Ann. σ':>8s} {'Daily μ':>10s}")
     for idx in sort_idx:
         t = RISKY_TICKERS[idx]
-        print(f"  {t:<8s} {ASSET_NAMES[t]:<24s} {ann_mean[idx]:>+7.2%} {ann_std[idx]:>7.2%} {mean_vector[idx]:>+.6f}")
+        print(f"  {t:<8s} {ASSET_NAMES.get(t, t):<24s} {ann_mean[idx]:>+7.2%} {ann_std[idx]:>7.2%} {mean_vector[idx]:>+.6f}")
 
     # ── 14. Cluster analysis ────────────────────────────────────────────
     CLUSTERS = {
@@ -258,7 +258,7 @@ def main():
                 i = ticker_idx[t]
                 w = weights[i]
                 cluster_total += w
-                print(f"    {t:<8s} {ASSET_NAMES[t]:<24s} {w:>+10.4f}")
+                print(f"    {t:<8s} {ASSET_NAMES.get(t, t):<24s} {w:>+10.4f}")
             print(f"    {'':─<32s} ──────────")
             print(f"    {'Cluster Total':<32s} {cluster_total:>+10.4f}")
             grand_total += cluster_total

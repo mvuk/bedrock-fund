@@ -423,15 +423,21 @@ def verify_matrix_inversion(Sigma, Sigma_inv):
     -------
     max_deviation : float
         Maximum absolute deviation of Σ · Σ⁻¹ from the identity matrix.
+        Returns None if verification fails.
     condition_number : float
         Condition number of Σ (ratio of largest to smallest singular value).
+        Returns None if verification fails.
     """
-    n = Sigma.shape[0]
-    product = Sigma @ Sigma_inv
-    identity = np.eye(n)
-    max_deviation = np.max(np.abs(product - identity))
-    condition_number = np.linalg.cond(Sigma)
-    return max_deviation, condition_number
+    try:
+        n = Sigma.shape[0]
+        product = Sigma @ Sigma_inv
+        identity = np.eye(n)
+        max_deviation = np.max(np.abs(product - identity))
+        condition_number = np.linalg.cond(Sigma)
+        return max_deviation, condition_number
+    except (FloatingPointError, ZeroDivisionError, OverflowError) as e:
+        print(f"WARNING: Matrix verification failed: {e}")
+        return None, None
 
 
 def generate_cml_points(rf, market_portfolio, n_points=100):

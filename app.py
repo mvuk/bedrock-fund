@@ -394,5 +394,5 @@ def download(filename):
 if __name__ == "__main__":
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     print("Starting Bedrock Fund Portfolio Analyzer...")
-    print("Open http://localhost:5000 in your browser")
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    print("Open http://localhost:8080 in your browser")
+    app.run(host='0.0.0.0', port=8080, debug=False)

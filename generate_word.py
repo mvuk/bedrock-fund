@@ -350,9 +350,9 @@ def generate_report(
 
     doc.add_paragraph(
         f"Among the {n_assets} assets, the highest mean daily return is "
-        f"{ASSET_NAMES[max_t]} ({max_t}) at {_fmt(mean_vector[max_idx])} "
+        f"{ASSET_NAMES.get(max_t, max_t)} ({max_t}) at {_fmt(mean_vector[max_idx])} "
         f"(annualized: {_pct(ann_mean[max_idx])}), "
-        f"and the lowest is {ASSET_NAMES[min_t]} ({min_t}) at "
+        f"and the lowest is {ASSET_NAMES.get(min_t, min_t)} ({min_t}) at "
         f"{_fmt(mean_vector[min_idx])} "
         f"(annualized: {_pct(ann_mean[min_idx])})."
     )
@@ -635,7 +635,7 @@ def generate_report(
     for row_i, idx in enumerate(mvp_sort):
         t = tickers[idx]
         _set_cell_text(table.rows[row_i + 1].cells[0], t, size=9)
-        _set_cell_text(table.rows[row_i + 1].cells[1], ASSET_NAMES[t], size=9)
+        _set_cell_text(table.rows[row_i + 1].cells[1], ASSET_NAMES.get(t, t), size=9)
         _set_cell_text(table.rows[row_i + 1].cells[2],
                        f"{mvp['weights'][idx]:+.4f}", size=9)
 
@@ -644,7 +644,7 @@ def generate_report(
     # Top MVP holdings
     top3_mvp = mvp_sort[:3]
     top_names = ", ".join(
-        f"{ASSET_NAMES[tickers[i]]} ({mvp['weights'][i]:+.2%})" for i in top3_mvp
+        f"{ASSET_NAMES.get(tickers[i], tickers[i])} ({mvp['weights'][i]:+.2%})" for i in top3_mvp
     )
     doc.add_paragraph(
         f"The portfolio is dominated by low-volatility defensive names: {top_names}. "
@@ -703,7 +703,7 @@ def generate_report(
     for row_i, idx in enumerate(mkt_sort):
         t = tickers[idx]
         _set_cell_text(table.rows[row_i + 1].cells[0], t, size=9)
-        _set_cell_text(table.rows[row_i + 1].cells[1], ASSET_NAMES[t], size=9)
+        _set_cell_text(table.rows[row_i + 1].cells[1], ASSET_NAMES.get(t, t), size=9)
         _set_cell_text(table.rows[row_i + 1].cells[2],
                        f"{market['weights'][idx]:+.4f}", size=9)
 
@@ -1065,7 +1065,7 @@ def _generate_markdown(
     mkt_sort = np.argsort(np.abs(market["weights"]))[::-1]
     top3_mvp = mvp_sort[:3]
     top_names = ", ".join(
-        f"{ASSET_NAMES[tickers[i]]} ({mvp['weights'][i]:+.2%})" for i in top3_mvp
+        f"{ASSET_NAMES.get(tickers[i], tickers[i])} ({mvp['weights'][i]:+.2%})" for i in top3_mvp
     )
 
     lines = []
@@ -1182,9 +1182,9 @@ def _generate_markdown(
     w("- Invertible: required for the frontier derivation (Σ⁻¹ exists)")
     w("")
     w(f"Among the {n_assets} assets, the highest mean daily return is "
-      f"{ASSET_NAMES[max_t]} ({max_t}) at {_fmt(mean_vector[max_idx])} "
+      f"{ASSET_NAMES.get(max_t, max_t)} ({max_t}) at {_fmt(mean_vector[max_idx])} "
       f"(annualized: {_pct(ann_mean[max_idx])}), "
-      f"and the lowest is {ASSET_NAMES[min_t]} ({min_t}) at "
+      f"and the lowest is {ASSET_NAMES.get(min_t, min_t)} ({min_t}) at "
       f"{_fmt(mean_vector[min_idx])} "
       f"(annualized: {_pct(ann_mean[min_idx])}).")
     w("")
@@ -1357,7 +1357,7 @@ def _generate_markdown(
     w("|--------|------|-----------|")
     for idx in mvp_sort:
         t = tickers[idx]
-        w(f"| {t} | {ASSET_NAMES[t]} | {mvp['weights'][idx]:+.4f} |")
+        w(f"| {t} | {ASSET_NAMES.get(t, t)} | {mvp['weights'][idx]:+.4f} |")
     w("")
     w(f"The portfolio is dominated by low-volatility defensive names: {top_names}. "
       "These assets have the lowest daily standard deviations in the universe and "
@@ -1395,7 +1395,7 @@ def _generate_markdown(
     w("|--------|------|--------------|")
     for idx in mkt_sort:
         t = tickers[idx]
-        w(f"| {t} | {ASSET_NAMES[t]} | {market['weights'][idx]:+.4f} |")
+        w(f"| {t} | {ASSET_NAMES.get(t, t)} | {market['weights'][idx]:+.4f} |")
     w("")
 
     # Leverage discussion
